@@ -1,0 +1,9 @@
+build/*
+env/*
+env_vars.py
+.env
+*.pyc
+connections.db.*
+__pycache__
+.c9/*
+data/*
