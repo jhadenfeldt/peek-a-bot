@@ -22,7 +22,10 @@ slack = pyBot.client
 
 conn = tinys3.Connection(os.environ.get("S3_SECRET"), os.environ.get("S3_KEY"), tls=True, default_bucket='peek-a-bot')
 
-app = Flask(__name__)
+app = Flask(__name__,
+        static_url_path='',
+        static_folder='frontend/dist',
+        template_folder='frontend/dist')
 
 
 def start_screenshot_worker(loop):
@@ -40,7 +43,7 @@ async def create_screenshot(config, response_url):
 	# Send the first response to let the user know the screenshot is being generated
 	payload = {
 		"username": "Peek-a-Bot",
-		"text": "One moment please, I'm generating the screenshot."
+		"text": "Please wait a second while I'm generating the screenshot."
 	}
 
 	requests.post(response_url, data=json.dumps(payload))
@@ -55,8 +58,7 @@ async def create_screenshot(config, response_url):
 
 	await page.goto(config["url"])
 
-	filename = hashlib.sha256((os.environ.get("FILENAME_SALT") + config["url"] + str(config["width"]) + str(
-		config["height"]) + str(config["fullPage"])).encode('utf-8')).hexdigest()
+	filename = hashlib.sha256((os.environ.get("FILENAME_SALT") + config["url"] + str(config["width"]) + str(config["height"]) + str(config["fullPage"])).encode('utf-8')).hexdigest()
 	filepath = 'data/{url}.jpg'.format(url=filename)
 	await page.screenshot({'path': filepath, 'fullPage': config["fullPage"]})
 
@@ -109,12 +111,12 @@ def parse_parameters(param_string):
 	return parameters
 
 
-@app.route("/install", methods=["GET"])
+@app.route("/", methods=["GET"])
 def pre_install():
 	client_id = pyBot.oauth["client_id"]
 	scope = pyBot.oauth["scope"]
 
-	return render_template("install.html", client_id=client_id, scope=scope)
+	return render_template("index.html", client_id=client_id, scope=scope)
 
 
 @app.route("/thanks", methods=["GET", "POST"])
