@@ -1,7 +1,6 @@
-tinys3==0.1.12
-pyppeteer==0.0.12
-requests==2.18.1
 slackclient==1.0.2
+pyppeteer==0.0.12
 Flask==0.12.2
-Flask_Assets==0.12
-python-dotenv==0.8.0
+requests==2.18.1
+tinys3==0.1.12
+python-dotenv==0.8.2
