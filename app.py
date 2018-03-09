@@ -40,75 +40,95 @@ worker.start()
 
 
 async def create_screenshot(config, response_url):
-	# Send the first response to let the user know the screenshot is being generated
+	try:
+		browser = launch(headless=True, options={"ignoreHTTPSErrors": True})
+		page = await browser.newPage()
+
+		await page.setViewport({
+			"width": config["width"],
+			"height": config["height"]
+		});
+
+		await page.goto(config["url"])
+
+		# Send the first response to let the user know the screenshot is being generated.
+		# This is done after page.goto() to prevent multiple messages.
+		payload = {
+			"username": "Peek-a-Bot",
+			"text": "Please wait a second while I'm generating the screenshot."
+		}
+
+		requests.post(response_url, data=json.dumps(payload))
+
+		filename = hashlib.sha256((os.environ.get("FILENAME_SALT") + config["url"] + str(config["width"]) + str(config["height"]) + str(config["fullPage"])).encode('utf-8')).hexdigest()
+		filepath = 'data/{url}.jpg'.format(url=filename)
+		await page.screenshot({'path': filepath, 'fullPage': config["fullPage"]})
+
+		await browser.close()
+
+		# Upload the file to S3 and delete the local temp file
+		file = open(filepath, 'rb')
+		response = conn.upload(filepath, file)
+		os.unlink(filepath)
+
+		# Send the second response with the screenshot to the user
+		payload = {
+			"username": "Peek-a-Bot",
+			"text": "Here you go:",
+			"attachments": [{
+				"text": config["url"],
+				"image_url": "{S3_INSTANCE}/{filepath}".format(S3_INSTANCE=os.environ.get("S3_INSTANCE"), filepath=filepath)
+			}]
+		}
+
+		requests.post(response_url, data=json.dumps(payload))
+	except Exception:
+		send_error(response_url)
+
+
+def send_error(response_url):
 	payload = {
 		"username": "Peek-a-Bot",
-		"text": "Please wait a second while I'm generating the screenshot."
-	}
-
-	requests.post(response_url, data=json.dumps(payload))
-
-	browser = launch(headless=True, options={"ignoreHTTPSErrors": True})
-	page = await browser.newPage()
-
-	await page.setViewport({
-		"width": config["width"],
-		"height": config["height"]
-	});
-
-	await page.goto(config["url"])
-
-	filename = hashlib.sha256((os.environ.get("FILENAME_SALT") + config["url"] + str(config["width"]) + str(config["height"]) + str(config["fullPage"])).encode('utf-8')).hexdigest()
-	filepath = 'data/{url}.jpg'.format(url=filename)
-	await page.screenshot({'path': filepath, 'fullPage': config["fullPage"]})
-
-	await browser.close()
-
-	# Upload the file to S3 and delete the local temp file
-	file = open(filepath, 'rb')
-	response = conn.upload(filepath, file)
-	os.unlink(filepath)
-
-	# Send the second response with the screenshot to the user
-	payload = {
-		"username": "Peek-a-Bot",
-		"text": "Here you go:",
 		"attachments": [{
-			"text": config["url"],
-			"image_url": "{S3_INSTANCE}/{filepath}".format(S3_INSTANCE=os.environ.get("S3_INSTANCE"), filepath=filepath)
+			"text": "Sorry, there seems to be an issue with your command.\nPlease make sure to pass the URL and the dimensions in the correct order:\n`/peek slack.com`, `/peek slack.com 1024 768` or `/peek slack.com all`",
+			"color": "#cc0000"
 		}]
 	}
 
 	requests.post(response_url, data=json.dumps(payload))
 
-
-def parse_parameters(param_string):
+def parse_parameters(param_string, response_url):
 	param_array = param_string.split()
 
-	# Add http-protocol in case the user didn't provide one
-	if (not param_array[0].startswith('http://') and not param_array[0].startswith('https://')):
-		param_array[0] = 'http://' + param_array[0]
+	try:
+		# Add http-protocol in case the user didn't provide one
+		if (not param_array[0].startswith('http://') and not param_array[0].startswith('https://')):
+			param_array[0] = 'http://' + param_array[0]
 
-	parameters = {
-		"url": param_array[0],
-		"fullPage": False
-	}
+		parameters = {
+			"url": param_array[0],
+			"fullPage": False
+		}
 
-	# Set the correct size parameters depending on the user input
-	parameters["width"] = 1920
-	if (len(param_array) > 1):
-		if (param_array[1].isdigit()):
-			parameters["width"] = int(param_array[1])
+
+		# Set the correct size parameters depending on the user input
+		parameters["width"] = 1920
+		if (len(param_array) > 1):
+			if (param_array[1].isdigit()):
+				parameters["width"] = int(param_array[1])
+			else:
+				if (param_array[1] == "all"):
+					parameters["fullPage"] = True
+
+		if (len(param_array) > 2):
+			parameters["height"] = int(param_array[2])
 		else:
-			if (param_array[1] == "all"):
-				parameters["fullPage"] = True
+			parameters["height"] = 1080
 
-	if (len(param_array) > 2):
-		parameters["height"] = int(param_array[2])
-	else:
-		parameters["height"] = 1080
+		return parameters
 
-	return parameters
+	except (ValueError,IndexError):
+		send_error(response_url)
 
 
 @app.route("/", methods=["GET"])
@@ -145,8 +165,10 @@ def hears():
 def peeks():
 	if (request.form):
 		response_url = request.form["response_url"]
-		screenshot_parameters = parse_parameters(request.form["text"])
-		worker_loop.call_soon_threadsafe(asyncio.async, create_screenshot(screenshot_parameters, response_url))
+		screenshot_parameters = parse_parameters(request.form["text"], response_url)
+
+		if(screenshot_parameters):
+			worker_loop.call_soon_threadsafe(asyncio.async, create_screenshot(screenshot_parameters, response_url))
 
 	return ('', 204)
 
