@@ -1,6 +1,6 @@
+tinys3==0.1.12
 Flask==0.12.2
+git+git://github.com/miyakogi/pyppeteer.git@d479d17def07093987f7403eb0f1c00457236783#egg=pyppeteer
 requests==2.18.1
 slackclient==1.0.2
-tinys3==0.1.12
-pyppeteer==0.0.12
 python-dotenv==0.8.2

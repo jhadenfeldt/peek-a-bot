@@ -41,7 +41,7 @@ worker.start()
 
 async def create_screenshot(config, response_url):
 	try:
-		browser = launch(headless=True, options={"ignoreHTTPSErrors": True})
+		browser = await launch(headless=True, options={"ignoreHTTPSErrors": True})
 		page = await browser.newPage()
 
 		await page.setViewport({
